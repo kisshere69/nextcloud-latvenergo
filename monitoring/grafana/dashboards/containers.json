@@ -1,0 +1,51 @@
+{
+  "title": "Containers",
+  "uid": "containers",
+  "schemaVersion": 39,
+  "version": 2,
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 3,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Per-container breakdown isn't available in this environment: Docker Desktop uses the containerd snapshotter, and cAdvisor's container-to-cgroup mapping only supports the classic overlay2 graphdriver. cAdvisor still reports the aggregate for all Docker containers combined (below). On a bare Linux Docker host this would show per-container series broken out by name."
+      }
+    },
+    {
+      "id": 1,
+      "title": "CPU - all Docker containers (aggregate)",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 3 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(container_cpu_usage_seconds_total{id=\"/docker\"}[5m]) * 100",
+          "legendFormat": "docker total CPU"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Memory - all Docker containers (aggregate)",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "container_memory_usage_bytes{id=\"/docker\"}",
+          "legendFormat": "docker total memory"
+        }
+      ]
+    }
+  ]
+}

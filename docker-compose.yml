@@ -118,9 +118,153 @@ services:
       nextcloud_net:
         ipv4_address: 172.28.0.10
 
+  certbot-renew:
+    image: certbot/certbot:latest
+    container_name: nc_certbot_renew
+    restart: unless-stopped
+    entrypoint: /scripts/renew-loop.sh
+    environment:
+      NC_DOMAIN: ${NC_DOMAIN}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot:/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - nextcloud_net
+
+  # --- monitoring ---
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nc_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - nextcloud_net
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: nc_node_exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    networks:
+      - nextcloud_net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: nc_cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /run/containerd:/run/containerd:ro
+    networks:
+      - nextcloud_net
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:latest
+    container_name: nc_mysqld_exporter
+    restart: unless-stopped
+    # Newer mysqld_exporter dropped DATA_SOURCE_NAME support in favor of a
+    # .my.cnf file (to keep the password out of `docker inspect`/process
+    # list) - write one from the env at startup instead of committing a
+    # file with a secret in it.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /tmp/.my.cnf <<-EOF
+        [client]
+        user=root
+        password=${MYSQL_ROOT_PASSWORD}
+        host=mariadb
+        port=3306
+        EOF
+        exec /bin/mysqld_exporter --config.my-cnf=/tmp/.my.cnf
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - nextcloud_net
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nc_nginx_exporter
+    restart: unless-stopped
+    command:
+      - --nginx.scrape-uri=http://nginx:8080/stub_status
+    depends_on:
+      - nginx
+    networks:
+      - nextcloud_net
+
+  loki:
+    image: grafana/loki:latest
+    container_name: nc_loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - nextcloud_net
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: nc_promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - nextcloud_net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nc_grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - nextcloud_net
+
 volumes:
   db_data:
   nc_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
 
 networks:
   nextcloud_net:

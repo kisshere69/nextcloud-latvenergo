@@ -38,12 +38,17 @@ WSL2 (Ubuntu)                           │
   └── Docker Compose                    │
         ├── nginx (TLS termination)   :443 ◄─┘
         ├── nextcloud (apache, образ nextcloud:apache)
+        ├── cron (тот же образ, /cron.sh, background jobs)
         ├── mariadb
         ├── redis (memcache + file locking)
-        ├── certbot (DNS-01 renewal)
-        └── monitoring: prometheus + node-exporter + grafana + loki + promtail
+        ├── certbot-renew (ежедневный DNS-01 renewal + reload nginx)
+        └── monitoring:
+              prometheus, node-exporter, cadvisor,
+              mysqld-exporter, nginx-exporter,
+              grafana (:3000), loki + promtail
 
-Volumes: nc_data, nc_config, db_data, certs, letsencrypt
+Volumes: nc_data, db_data, letsencrypt (bind mount),
+prometheus_data, loki_data, grafana_data
 ```
 
 **Почему DNS-01 (Let's Encrypt):** TXT-запись в DNS, не нужно открывать порты наружу.
@@ -66,7 +71,7 @@ A-запись может смотреть куда угодно. Локальн
 | 7 | Загрузка 2 GB файла, md5 проверка | [x] |
 | 8 | Desktop Client: синк без предупреждений | [x] |
 | 9 | Воспроизводимость: Makefile, bootstrap.sh | [x] |
-| 10 | Мониторинг: Prometheus + Grafana + Loki, certbot renewal | [ ] |
+| 10 | Мониторинг: Prometheus + Grafana + Loki, certbot renewal | [x] |
 | 11 | Техдокументация (docs/TECHNICAL.md) | [ ] |
 | 12 | Раздел «для продакшена» | [ ] |
 
@@ -171,7 +176,7 @@ REDIS_HOST=redis
 При старте новой сессии скажи: "посмотри CONTEXT.md"
 Путь к файлу: `C:\Users\nikit\nextcloud-latvenergo\CONTEXT.md`
 
-Текущий статус: Задачи 0-9 готовы.
+Текущий статус: Задачи 0-10 готовы.
 - WSL2 2.7.10 + Ubuntu 20.04.6 LTS, Docker Desktop 4.80.0 (Engine 29.6.1,
   Compose v5.3.0), WSL-интеграция с Ubuntu-20.04 включена и проверена.
   Диск 955G своб., память 13G своб.
@@ -302,5 +307,44 @@ REDIS_HOST=redis
   локально закешированы), после чего `occ status` показывает свежую
   установку, admin+nikita пересозданы с теми же паролями из .env,
   healthcheck зелёный, HTTPS отвечает 200.
-Следующий шаг: Задача 10 — мониторинг (Prometheus + Grafana + Loki),
-certbot auto-renewal.
+- Задача 10 (мониторинг + auto-renewal): минимальный набор метрик —
+  node-exporter (хост/WSL), cAdvisor (контейнеры), mysqld-exporter
+  (MariaDB), nginx-exporter (через `stub_status` на внутреннем
+  порту 8080, наружу не публикуется). Prometheus подтвердил все 5
+  таргетов в состоянии `up`. Loki + Promtail (discovery контейнеров
+  через docker.sock) — подтверждено вживую: реальные access-логи
+  nc_app видны через Loki API. Grafana — datasources (Prometheus,
+  Loki) и 2 дашборда (Host Overview, Containers) провижинятся
+  автоматически через docker-compose volumes, без ручной настройки
+  после `make up`.
+  Auto-renewal: отдельный контейнер `certbot-renew` на том же образе
+  certbot, что и в Задаче 2, крутит `certbot renew` раз в сутки с
+  `--deploy-hook`, перезагружающим nginx через смонтированный
+  `docker.sock`. Прогнали вживую: certbod корректно определил, что
+  до renewal ещё далеко (истекает 2026-10-11, пропущено), и отдельно
+  проверили сам механизм — `docker exec nc_certbot_renew docker exec
+  nc_nginx nginx -t` действительно работает.
+  Грабли:
+  - `mysqld-exporter` новой версии (0.19) больше не читает
+    `DATA_SOURCE_NAME` из env — нужен файл `.my.cnf`. Не стали класть
+    файл с паролем в репо: генерируем его на лету в entrypoint
+    контейнера из переменной окружения.
+  - `cAdvisor` не видит per-container метрики (только общие cgroup
+    верхнего уровня) — Docker Desktop использует containerd
+    snapshotter вместо классического overlay2, а логика cAdvisor
+    (даже в свежей v0.52.1) резолвит read-write layer ID контейнера
+    только для overlay2. Попробовали новее версию + примонтировать
+    containerd.sock — не помогло, это фундаментальная несовместимость
+    именно Docker Desktop, а не версии cAdvisor. Оставили
+    агрегированную метрику по всем Docker-контейнерам (`id="/docker"`)
+    вместо разбивки по имени, с пояснением в самом дашборде (text-панель)
+    и здесь. На обычном Linux-хосте (не Docker Desktop) это работало
+    бы из коробки с полной разбивкой по контейнерам.
+  - Осознанно смонтировали `/var/run/docker.sock` в `certbot-renew`
+    (для deploy-hook) — это даёт контейнеру полный доступ к Docker API
+    хоста, что в продакшене является вектором повышения привилегий;
+    для одноразового домашнего стенда — приемлемый компромисс, но в
+    разделе «для продакшена» стоит упомянуть замену на
+    docker-socket-proxy с ограниченными правами.
+Следующий шаг: Задача 11/12 — техническая документация
+(docs/TECHNICAL.md) и раздел «чего не хватает для продакшена».
