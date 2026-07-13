@@ -1,0 +1,18 @@
+# Secrets — never commit
+.env
+
+# Let's Encrypt certificates
+letsencrypt/
+certs/
+
+# Test files
+*.bin
+test-*.iso
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+*.swp
