@@ -65,7 +65,7 @@ A-запись может смотреть куда угодно. Локальн
 | 6 | Чистый Overview: все occ-команды | [x] |
 | 7 | Загрузка 2 GB файла, md5 проверка | [x] |
 | 8 | Desktop Client: синк без предупреждений | [x] |
-| 9 | Воспроизводимость: Makefile, bootstrap.sh | [ ] |
+| 9 | Воспроизводимость: Makefile, bootstrap.sh | [x] |
 | 10 | Мониторинг: Prometheus + Grafana + Loki, certbot renewal | [ ] |
 | 11 | Техдокументация (docs/TECHNICAL.md) | [ ] |
 | 12 | Раздел «для продакшена» | [ ] |
@@ -153,11 +153,13 @@ REDIS_HOST=redis
 ## Чек-лист перед встречей
 
 - [ ] Всё работает после перезагрузки ноута (restart: unless-stopped)
-- [ ] Полный цикл `make nuke && make up` прогнан и засечено время
+- [x] Полный цикл `make nuke && make up && make post-install` прогнан
+      и засечено время (~40 секунд, образы уже закешированы локально)
 - [ ] Скриншот чистого Overview
-- [ ] Скриншот Desktop Client «Synchronized»
+- [x] Desktop Client «Synchronized» подтверждён вживую (Задача 8)
 - [ ] Скриншот Grafana dashboard
-- [ ] Тестовый 2 GB файл готов к загрузке вживую
+- [x] Тестовый 2 GB файл готов к загрузке вживую (`test-2gb.bin` в
+      корне репо)
 - [ ] Уметь объяснить каждую строчку docker-compose.yml и nginx.conf
 - [ ] Подготовить ответы: «почему не X?» для каждого решения
 - [ ] Offline: сертификат уже выпущен и валиден без интернета
@@ -169,7 +171,7 @@ REDIS_HOST=redis
 При старте новой сессии скажи: "посмотри CONTEXT.md"
 Путь к файлу: `C:\Users\nikit\nextcloud-latvenergo\CONTEXT.md`
 
-Текущий статус: Задачи 0-8 готовы.
+Текущий статус: Задачи 0-9 готовы.
 - WSL2 2.7.10 + Ubuntu 20.04.6 LTS, Docker Desktop 4.80.0 (Engine 29.6.1,
   Compose v5.3.0), WSL-интеграция с Ubuntu-20.04 включена и проверена.
   Диск 955G своб., память 13G своб.
@@ -278,4 +280,27 @@ REDIS_HOST=redis
     настоящий SMTP компании.
   - **Server ID не настроен** — актуально только для нескольких
     PHP-серверов (горизонтальное масштабирование), у нас один сервер.
-Следующий шаг: Задача 9 — воспроизводимость (Makefile, bootstrap.sh).
+- Задача 9 (воспроизводимость): `make` пришлось доустановить в
+  WSL (`apt-get install make`, once) — это единственная ручная
+  зависимость, не автоматизируемая самим Makefile (курица-яйцо).
+  `scripts/bootstrap.sh` — проверяет WSL2/Docker/.env/hosts, падает
+  с понятной инструкцией, если что-то не так (hosts-файл Windows
+  всё равно нельзя починить автоматически — уже знаем с Задачи 1).
+  `scripts/post-install.sh` — все occ-команды из Задачи 6 +
+  идемпотентное создание desktop-пользователя (переменные
+  DESKTOP_USER/DESKTOP_USER_PASSWORD в .env). `scripts/healthcheck.sh`
+  — здоровье контейнеров + HTTPS-проверка одной командой.
+  `make deploy` = bootstrap → certs → up → post-install → healthcheck,
+  единая команда "с нуля" (требование #6 задания).
+  Заодно нашли и починили тухлый healthcheck у nc_app: `CMD-SHELL` в
+  docker выполняется через `/bin/sh` контейнера, а это dash, не bash —
+  `/dev/tcp/...` (bashism) там не работает ("Directory nonexistent").
+  Заменили на `curl -f http://localhost/status.php` (заодно content-aware,
+  не просто "порт открыт").
+  **Реально прогнали** `make nuke && make up && make post-install`
+  (не только написали) — полный цикл уложился в ~40 секунд (образы уже
+  локально закешированы), после чего `occ status` показывает свежую
+  установку, admin+nikita пересозданы с теми же паролями из .env,
+  healthcheck зелёный, HTTPS отвечает 200.
+Следующий шаг: Задача 10 — мониторинг (Prometheus + Grafana + Loki),
+certbot auto-renewal.

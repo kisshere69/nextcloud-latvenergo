@@ -293,3 +293,38 @@
   настроен, server ID не настроен. Все четыре не относятся к задаче
   ("не используем ExApps", "форсинг 2FA сломает демо", "нет SMTP в
   локальном окружении", "один PHP-сервер, ID не нужен").
+
+### Задача 9 — воспроизводимость (Makefile, bootstrap.sh)
+
+- Курица-яйцо: `make` в свежей Ubuntu-20.04 (WSL) не установлен по
+  умолчанию — а без `make` не запустить ни один Makefile-таргет,
+  включая гипотетический `make bootstrap`. Это единственная ручная
+  зависимость, которую нельзя закрыть самим Makefile:
+  `apt-get install -y make` один раз, дальше всё через `make`.
+- `scripts/bootstrap.sh` сознательно не пытается автоматически
+  чинить Windows hosts-файл (уже знаем с Задачи 1 — туда без прав
+  администратора не залезть надёжно из автоматизации) — вместо этого
+  падает с понятной инструкцией, что и куда дописать руками.
+- В `scripts/post-install.sh` добавили идемпотентное создание
+  desktop-пользователя (`DESKTOP_USER`/`DESKTOP_USER_PASSWORD` из
+  `.env`) — без этого `make nuke` откатывал бы среду в состояние без
+  `nikita`, и пришлось бы каждый раз руками пересоздавать юзера для
+  Desktop Client. Проверка на существование через
+  `occ user:list | grep`, чтобы повторный запуск не падал на
+  "user already exists".
+- Грабли: healthcheck у `nc_app` (`exec 3<>/dev/tcp/localhost/80`)
+  всегда показывал `unhealthy`, хотя сайт реально отвечал 200. Причина:
+  Docker's `CMD-SHELL` в healthcheck выполняется через `/bin/sh`
+  внутри контейнера, а `/bin/sh` в образе nextcloud:apache — это
+  dash, не bash; `/dev/tcp/...` — это bashism, dash с ним не работает
+  ("cannot create /dev/tcp/localhost/80: Directory nonexistent").
+  Заменили на `curl -f http://localhost/status.php` (в образе есть
+  и `bash`, и `curl` — проверили `docker exec ... which bash curl`).
+- Прогнали по-настоящему (не только написали скрипты и понадеялись):
+  `make nuke && make up && make post-install` — полный снос данных
+  (`docker compose down -v`, сертификат не трогает, он в bind-mount
+  `./letsencrypt`, не в volume) и подъём с нуля. Уложилось в ~40 секунд
+  (образы уже локально закешированы — на действительно чистой машине
+  добавится время на `docker pull`). После цикла: `occ status`
+  показывает свежую установку, `admin` и `nikita` пересозданы с теми
+  же паролями из `.env`, все healthcheck зелёные, HTTPS отвечает 200.
