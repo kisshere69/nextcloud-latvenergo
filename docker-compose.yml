@@ -270,4 +270,10 @@ networks:
   nextcloud_net:
     ipam:
       config:
+        # Auto-assigned addresses are restricted to the upper half of the
+        # subnet so they can never collide with nginx's pinned
+        # 172.28.0.10 (needed for TRUSTED_PROXIES / extra_hosts) - without
+        # this, whichever container happens to start around the same
+        # time as nginx can be handed that same address by Docker's IPAM.
         - subnet: 172.28.0.0/24
+          ip_range: 172.28.0.128/25
