@@ -31,7 +31,7 @@ make healthcheck # verify everything is up
 
 Or all of the above in one shot: `make deploy`.
 
-- Nextcloud: `https://<your-domain>`
+- Nextcloud: `https://nextcloud-nikita.duckdns.org`
 - Grafana: `http://localhost:3000` (datasources + dashboards provisioned automatically)
 - Prometheus: `http://localhost:9090`
 
