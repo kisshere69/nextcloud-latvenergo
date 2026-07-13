@@ -1,4 +1,6 @@
 .env
+CONTEXT.md
+docs/NOTES.md
 letsencrypt/
 certs/
 *.bin
