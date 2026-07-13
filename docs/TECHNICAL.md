@@ -200,4 +200,6 @@ mašīnas. Reālā produkcijas vidē trūkst/būtu jāmaina:
   `default_phone_region`, `maintenance_window_start`, cron režīms,
   HSTS header). Atlikušie 4 punkti — skat. §9 iemeslus.
 
-Detalizēts problēmu un risinājumu žurnāls: [`docs/NOTES.md`](NOTES.md).
+Detalizēts problēmu un risinājumu žurnāls (visas kļūdas, cēloņi un
+risinājumi hronoloģiskā secībā) tiks uzrādīts klātienes tikšanās laikā
+kā papildu materiāls.
