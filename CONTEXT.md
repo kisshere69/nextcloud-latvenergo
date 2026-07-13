@@ -37,7 +37,7 @@ Windows host
 WSL2 (Ubuntu)                           │
   └── Docker Compose                    │
         ├── nginx (TLS termination)   :443 ◄─┘
-        ├── nextcloud (php-fpm или apache)
+        ├── nextcloud (apache, образ nextcloud:apache)
         ├── mariadb
         ├── redis (memcache + file locking)
         ├── certbot (DNS-01 renewal)
@@ -56,14 +56,14 @@ A-запись может смотреть куда угодно. Локальн
 
 | Задача | Описание | Статус |
 |--------|----------|--------|
-| 0 | Подготовка: WSL2, Docker, скелет репо | [ ] |
-| 1 | Hostname: DuckDNS + hosts (Windows + WSL) | [ ] |
-| 2 | TLS: Let's Encrypt DNS-01 (staging → prod) | [ ] |
-| 3 | MariaDB: utf8mb4, InnoDB параметры, healthcheck | [ ] |
-| 4 | Nextcloud + Redis | [ ] |
-| 5 | nginx: TLS termination, security headers, redirects | [ ] |
-| 6 | Чистый Overview: все occ-команды | [ ] |
-| 7 | Загрузка 2 GB файла, md5 проверка | [ ] |
+| 0 | Подготовка: WSL2, Docker, скелет репо | [x] |
+| 1 | Hostname: DuckDNS + hosts (Windows + WSL) | [x] |
+| 2 | TLS: Let's Encrypt DNS-01 (staging → prod) | [x] |
+| 3 | MariaDB: utf8mb4, InnoDB параметры, healthcheck | [x] |
+| 4 | Nextcloud + Redis | [x] |
+| 5 | nginx: TLS termination, security headers, redirects | [x] |
+| 6 | Чистый Overview: все occ-команды | [x] |
+| 7 | Загрузка 2 GB файла, md5 проверка | [x] |
 | 8 | Desktop Client: синк без предупреждений | [ ] |
 | 9 | Воспроизводимость: Makefile, bootstrap.sh | [ ] |
 | 10 | Мониторинг: Prometheus + Grafana + Loki, certbot renewal | [ ] |
@@ -111,6 +111,7 @@ nextcloud-latvenergo/
 | Redis | Закрывает варнинги memcache + file locking в Overview |
 | nginx как reverse proxy | TLS termination, security headers, upload buffering |
 | MariaDB 10.11 LTS | Официально рекомендован Nextcloud |
+| nextcloud:apache (не fpm) | nginx делает простой proxy_pass на порт 80, без fastcgi_params — меньше хрупких мест в конфиге |
 | Prometheus + Grafana + Loki | Полный стек: метрики + логи в одном интерфейсе |
 
 ---
@@ -168,5 +169,83 @@ REDIS_HOST=redis
 При старте новой сессии скажи: "посмотри CONTEXT.md"
 Путь к файлу: `C:\Users\nikit\nextcloud-latvenergo\CONTEXT.md`
 
-Текущий статус: читаем задание, создаём скелет проекта.
-Следующий шаг: Задача 0 — проверка WSL2 и Docker.
+Текущий статус: Задачи 0-7 готовы.
+- WSL2 2.7.10 + Ubuntu 20.04.6 LTS, Docker Desktop 4.80.0 (Engine 29.6.1,
+  Compose v5.3.0), WSL-интеграция с Ubuntu-20.04 включена и проверена.
+  Диск 955G своб., память 13G своб.
+- GitHub-репо создан и запушен: https://github.com/kisshere69/nextcloud-latvenergo
+- DuckDNS: nextcloud-nikita.duckdns.org (A-запись → 83.99.212.156).
+  .env заполнен (домен, DuckDNS token, сгенерированные пароли, email).
+  hosts (Windows + WSL Ubuntu-20.04) → 127.0.0.1, резолвинг проверен.
+- TLS: certbot/duckdns-auth.sh + duckdns-cleanup.sh (manual DNS-01 hooks,
+  используют DuckDNS update API с txt=). certbot/renew.sh оборачивает
+  certonly/renew в docker run. Makefile: certs-staging, certs.
+  Реальный prod-сертификат выпущен и лежит в ./letsencrypt/ (gitignored):
+  issuer=Let's Encrypt, subject=nextcloud-nikita.duckdns.org,
+  истекает 2026-10-11.
+  ВАЖНО (грабли на будущее): Docker Desktop WSL-интеграция с Ubuntu-20.04
+  периодически слетает после wsl --terminate/перезапуска — приходится
+  заново включать тумблер в Docker Desktop → Settings → Resources → WSL
+  Integration. Также ~/.docker/config.json в WSL был вручную очищен
+  (credsStore: desktop.exe вызывал "exec format error" при docker pull) —
+  если Docker Desktop пересоздаст этот файл, ту же ошибку придётся чинить
+  так же (заменить содержимое на {}).
+- MariaDB: docker-compose.yml с сервисом mariadb:10.11. Настройки под
+  Nextcloud: transaction-isolation=READ-COMMITTED, binlog-format=ROW,
+  innodb-file-per-table=1, character-set-server=utf8mb4,
+  collation-server=utf8mb4_general_ci, max-allowed-packet=128M,
+  innodb-buffer-pool-size=1G. Healthcheck — встроенный в образ
+  healthcheck.sh (--connect --innodb_initialized). Поднято и проверено
+  вживую: контейнер healthy, все параметры подтверждены через SHOW
+  VARIABLES.
+- Nextcloud + Redis: образ nextcloud:apache, автоустановка через env
+  (MYSQL_*, NEXTCLOUD_ADMIN_*, NEXTCLOUD_TRUSTED_DOMAINS, REDIS_HOST).
+  Проверено через `occ status` (installed: true, version 34.0.1) и
+  `occ config:list system`: memcache.locking/distributed = Redis,
+  mysql.utf8mb4 = true, trusted_domains содержит домен.
+  depends_on с condition service_healthy на mariadb и redis.
+- nginx: TLS termination настоящим prod-сертификатом из ./letsencrypt/,
+  HTTP→HTTPS редирект (301), HSTS. Explicit subnet 172.28.0.0/24 для
+  nextcloud_net (нужен для TRUSTED_PROXIES). У Nextcloud выставлены
+  TRUSTED_PROXIES=172.28.0.0/24, OVERWRITEPROTOCOL=https,
+  OVERWRITEHOST/OVERWRITECLIURL=домен. client_max_body_size 0 и
+  proxy_request_buffering off — под грядущую загрузку 2GB файла
+  (не буферизировать целиком в nginx).
+  Проверено вживую с Windows-стороны обычным `curl` (без -k):
+  HTTP 200 на /status.php, 301 редирект с http, реальный
+  issuer=Let's Encrypt в TLS-хендшейке.
+  Грабли: Nextcloud (через свой .htaccess в образе apache) сам уже
+  выставляет X-Content-Type-Options/X-Frame-Options/X-Permitted-Cross-
+  Domain-Policies/X-Robots-Tag/Referrer-Policy — если те же заголовки
+  добавлять ещё и в nginx, они дублируются в ответе. Оставили в nginx
+  только Strict-Transport-Security (единственный, который сам апстрим
+  надёжно не проставляет).
+- Задача 6 (чистый Overview): `occ db:add-missing-indices`,
+  `occ db:convert-filecache-bigint -n` (всё уже up to date на свежей
+  установке), `default_phone_region=LV`, `maintenance_window_start=1`,
+  `occ background:cron`. Добавлен sidecar-контейнер `cron` (тот же
+  образ nextcloud:apache, entrypoint `/cron.sh` — busybox crond по
+  встроенному в образ crontab `*/5 * * * * php -f cron.php`). Прогнали
+  `cron.php` вручную — `lastcron` обновился, ошибок нет.
+  Проверили PHP-модули (`bcmath, gmp, imagick, intl, redis, apcu, zip` —
+  все на месте) и OPcache (`interned_strings_buffer=32,
+  max_accelerated_files=10000, memory_consumption=128` — уже
+  соответствует рекомендациям Nextcloud из коробки, кастомный php.ini
+  не понадобился: официальный образ уже так собран).
+  Нашли и починили: `.well-known/carddav` и `/caldav` редиректили на
+  `http://`, а не `https://` (Apache сам не знает, что соединение TLS,
+  т.к. между nginx и apache трафик обычный HTTP) — обработали эти два
+  location'а прямо в nginx (`return 301 https://...`), как советует
+  официальная документация Nextcloud для reverse-proxy.
+- Задача 7 (2GB upload): загрузили/скачали через WebDAV
+  (`remote.php/dav/files/admin/...`) сгенерированный 2GB файл со
+  случайным содержимым. md5 до и после **идентичны**
+  (e41d5a5ffcee897cb54c5672c3dac212). Тестовый файл лежит в
+  `test-2gb.bin` в корне репо (gitignored, `*.bin`) — готов для
+  повторной загрузки вживую на встрече.
+  Грабли: получили 413 от **Apache** (не nginx!) на первой попытке —
+  `LimitRequestBody` в apache-limits.conf образа читает отдельную
+  переменную `APACHE_BODY_LIMIT`, дефолт 1GiB, и наш
+  `PHP_UPLOAD_LIMIT=20G` на неё не влияет (это разные лимиты на разных
+  уровнях стека). Выставили `APACHE_BODY_LIMIT: 0` в docker-compose.
+Следующий шаг: Задача 8 — Desktop Client, синк без предупреждений.

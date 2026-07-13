@@ -18,7 +18,7 @@ Reproducible Nextcloud deployment on Windows 11 + WSL2 + Docker Compose with rea
 
 ```bash
 cp .env.example .env
-# Edit .env with your DuckDNS domain and token
+# Edit .env with the DuckDNS domain and token
 
 make bootstrap   # check dependencies, prepare env
 make certs       # issue Let's Encrypt certificate
