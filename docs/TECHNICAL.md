@@ -28,7 +28,7 @@ Repozitorijs: https://github.com/kisshere69/nextcloud-latvenergo
 ## 2. Arhitektūra
 
 ```
-Windows hosts fails: 127.0.0.1  <domēns>.duckdns.org
+Windows hosts file: 127.0.0.1  https://nextcloud-nikita.duckdns.org.duckdns.org
         │
 Nextcloud Desktop Client ──HTTPS (443)──┐
                                         │
@@ -199,7 +199,3 @@ mašīnas. Reālā produkcijas vidē trūkst/būtu jāmaina:
   (`occ db:add-missing-indices`, `db:convert-filecache-bigint`,
   `default_phone_region`, `maintenance_window_start`, cron režīms,
   HSTS header). Atlikušie 4 punkti — skat. §9 iemeslus.
-
-Detalizēts problēmu un risinājumu žurnāls (visas kļūdas, cēloņi un
-risinājumi hronoloģiskā secībā) tiks uzrādīts klātienes tikšanās laikā
-kā papildu materiāls.
