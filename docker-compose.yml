@@ -183,10 +183,6 @@ services:
     image: prom/mysqld-exporter:latest
     container_name: nc_mysqld_exporter
     restart: unless-stopped
-    # Newer mysqld_exporter dropped DATA_SOURCE_NAME support in favor of a
-    # .my.cnf file (to keep the password out of `docker inspect`/process
-    # list) - write one from the env at startup instead of committing a
-    # file with a secret in it.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -270,10 +266,5 @@ networks:
   nextcloud_net:
     ipam:
       config:
-        # Auto-assigned addresses are restricted to the upper half of the
-        # subnet so they can never collide with nginx's pinned
-        # 172.28.0.10 (needed for TRUSTED_PROXIES / extra_hosts) - without
-        # this, whichever container happens to start around the same
-        # time as nginx can be handed that same address by Docker's IPAM.
         - subnet: 172.28.0.0/24
           ip_range: 172.28.0.128/25
