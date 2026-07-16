@@ -28,7 +28,7 @@ Repozitorijs: https://github.com/kisshere69/nextcloud-latvenergo
 ## 2. Arhitektūra
 
 ```
-Windows hosts file: 127.0.0.1  https://nextcloud-nikita.duckdns.org.duckdns.org
+Windows hosts file: 127.0.0.1  https://nextcloud-nikita.duckdns.org
         │
 Nextcloud Desktop Client ──HTTPS (443)──┐
                                         │
